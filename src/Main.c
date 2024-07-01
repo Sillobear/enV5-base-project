@@ -1,105 +1,163 @@
 #define SOURCE_FILE "MAIN"
 
-#include "Common.h"
-#include "Esp.h"
-#include "FreeRtosQueueWrapper.h"
-#include "FreeRtosTaskWrapper.h"
-#include "Network.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
-#include <hardware/watchdog.h>
-#include <pico/bootrom.h>
-#include <pico/stdlib.h>
+#include "hardware/spi.h"
+#include "pico/printf.h"
+#include "pico/stdlib.h"
 
-/* region LED HANDLER */
+#include "EnV5HwConfiguration.h"
+#include "EnV5HwController.h"
+#include "stub.h"
+#include "Flash.h"
 
-#define LED0_PIN 22
-#define LED1_PIN 24
-#define LED2_PIN 25
+spiConfiguration_t spi_config = {
+    .spiInstance = SPI_FLASH_INSTANCE,
+    .baudrate = SPI_FLASH_BAUDRATE,
+    .sckPin = SPI_FLASH_SCK,
+    .csPin = SPI_FLASH_CS,
+    .misoPin = SPI_FLASH_MISO,
+    .mosiPin = SPI_FLASH_MOSI,
+};
 
-void led_init(uint8_t gpio) {
-    gpio_init(gpio);
-    gpio_set_dir(gpio, GPIO_OUT);
-}
+flashConfiguration_t flash_config = {
+    .flashBytesPerPage = FLASH_BYTES_PER_PAGE,
+    .flashBytesPerSector = FLASH_BYTES_PER_SECTOR,
+    .flashSpiConfiguration = &spi_config,
+};
 
-void leds_init() {
-    led_init(LED0_PIN);
-    led_init(LED1_PIN);
-    led_init(LED2_PIN);
-}
+void blinkLED(size_t count) {
+    for (size_t i=0; i < count; i++) {
+        env5HwControllerLedsAllOn();
+        sleep_ms(500);
 
-void leds_all_on() {
-    gpio_put(LED0_PIN, 1);
-    gpio_put(LED1_PIN, 1);
-    gpio_put(LED2_PIN, 1);
-}
-
-void leds_all_off() {
-    gpio_put(LED0_PIN, 0);
-    gpio_put(LED1_PIN, 0);
-    gpio_put(LED2_PIN, 0);
-}
-
-/* endregion LED HANDLER */
-
-_Noreturn void ledTask(void) {
-    while (true) {
-        PRINT("LEDs should now turn on");
-        leds_all_on();
-        freeRtosTaskWrapperTaskSleep(2000);
-        PRINT("LEDs should now turned off");
-        leds_all_off();
-        freeRtosTaskWrapperTaskSleep(2000);
+        env5HwControllerLedsAllOff();
+        sleep_ms(500);
     }
 }
 
-/*! \brief Goes into bootloader mode when 'r' is pressed
- */
-_Noreturn void enterBootModeTask(void) {
-    while (true) {
-        if (getchar_timeout_us(10) == 'r' || !stdio_usb_connected()) {
-            PRINT_DEBUG("Boot Mode request detected.");
-            reset_usb_boot(0, 0);
-        }
-
-        // Watchdog update needs to be performed frequent, otherwise the device will crash
-        watchdog_update();
-        PRINT_DEBUG("watchdog updated");
-        freeRtosTaskWrapperTaskSleep(1000);
-    }
-}
-
-void init(void) {
-    // First check if we crash last time -> reboot into boot rom mode
-    if (watchdog_enable_caused_reboot()) {
-        reset_usb_boot(0, 0);
-    }
-
-    // init usb
+void initHardware(void) {
+    env5HwControllerInit();
     stdio_init_all();
-    // waits for usb connection, REMOVE to continue without waiting for connection
-    while ((!stdio_usb_connected())) {}
+    sleep_ms(500);
 
-    // Checks connection to ESP and initialize ESP
-    espInit();
-
-    // create freeRTOS task queue
-    freeRtosQueueWrapperCreate();
-
-    // enables watchdog to check for reboots
-    watchdog_enable(2000, 1);
+    blinkLED(5);
 }
 
-int main() {
-    // initialize hardware
-    init();
-    leds_init();
+void loadBinFile(void) {
+    char raw_length [9];
+    size_t index = 0;
+    while (1) {
+        raw_length[index] = getchar();
+        if(raw_length[index] == '\n') {
+            break;
+        }
+        index++;
+    }
+    blinkLED(2);
+    uint32_t length = strtol(raw_length, NULL, 10);
 
-    networkTryToConnectToNetworkUntilSuccessful();
+    for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_SECTOR); index++) {
+        flashEraseSector(&flash_config, index *FLASH_BYTES_PER_SECTOR);
+    }
 
-    // add freeRTOS tasks
-    freeRtosTaskWrapperRegisterTask(enterBootModeTask, "enterBootModeTask", 0, FREERTOS_CORE_0);
-    freeRtosTaskWrapperRegisterTask(ledTask, "ledTask", 0, FREERTOS_CORE_1);
+    for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_PAGE); index++) {
+        size_t buffer_length = 0;
+        if (length-index*FLASH_BYTES_PER_PAGE > 0) {
+            buffer_length = FLASH_BYTES_PER_PAGE;
+        } else {
+            buffer_length = length % FLASH_BYTES_PER_PAGE;
+        }
+        uint8_t input_buffer [buffer_length];
+        for (size_t buffer_index = 0; buffer_index < buffer_length; buffer_index++) {
+            input_buffer[buffer_index] = getchar();
+        }
+        flashWritePage(&flash_config, index*FLASH_BYTES_PER_PAGE, input_buffer, FLASH_BYTES_PER_PAGE);
+        blinkLED(1);
+    }
+    printf("ack: binfile");
+}
 
-    // starts freeRTOS tasks
-    freeRtosTaskWrapperStartScheduler();
+void runTest(void) {
+    //Input Data length
+    char raw_length [9];
+    memset(raw_length, 0, sizeof(raw_length));
+    size_t index = 0;
+    while (1) {
+        raw_length[index] = getchar();
+        if(raw_length[index] == '\n') {
+            break;
+        }
+        index++;
+    }
+    uint32_t length_in = strtol(raw_length, NULL, 10);
+
+    //Output Data length
+    memset(raw_length, 0, sizeof(raw_length));
+    index = 0;
+    while (1) {
+        raw_length[index] = getchar();
+        if(raw_length[index] == '\n') {
+            break;
+        }
+        index++;
+    }
+    uint32_t length_out = strtol(raw_length, NULL, 10);
+
+    //Read input
+    uint8_t input_buffer [length_in];
+    index = 0;
+    while (index < length_in) {
+        input_buffer[index] = getchar();
+        index++;
+    }
+    blinkLED(2);
+    printf("ack: input\n");
+
+    //Prediction on FPGA
+    uint8_t output_buffer [length_out];
+    modelPredict(input_buffer, length_in, output_buffer, length_out);
+
+    //send output
+    printf("result: ");
+    for (index = 0; index < length_out; index++) {
+        printf("%02X", output_buffer[index]);
+    }
+    printf("\n");
+}
+
+void sendConfig(void) {
+    printf("page: %i\n", FLASH_BYTES_PER_PAGE);
+}
+
+_Noreturn void run(void) {
+    while(1) {
+        char input = getchar_timeout_us(UINT32_MAX);
+        switch (input) {
+        case 'F' :
+            env5HwControllerFpgaPowersOn();
+            break;
+        case 'f':
+            env5HwControllerFpgaPowersOff();
+            break;
+        case 'b':
+            loadBinFile();
+            break;
+        case 't':
+            runTest();
+            break;
+        case 'c':
+            sendConfig();
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+int main(void) {
+    initHardware();
+    run();
 }

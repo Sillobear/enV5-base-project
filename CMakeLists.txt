@@ -7,22 +7,8 @@ if (DEBUG_OUTPUT)
     add_definitions(-DDEBUG_MODE)
 endif ()
 
-if (UNIT_TEST)
-    message(NOTICE "INFO: Building for local machine")
 
-    project(enV5 C CXX ASM)
 
-    # enable test execution via CMake
-    include(CTest)
-
-    load_enV5()
-
-    # setup unit-tests
-    enV5_init_unit_tests()
-
-    # add your own unit-tests
-    add_subdirectory(test/unit)
-else ()
     message(NOTICE "INFO: Building for enV5 hardware (Type: ${CMAKE_BUILD_TYPE})")
 
     # include pico-sdk
@@ -40,12 +26,8 @@ else ()
         # load libraries from runtime.enV5
         enV5_init()
 
-        # add your own hardware tests
-        add_subdirectory(test/hardware)
-
         # add your own main target
         add_subdirectory(src)
     elseif (PICO_ON_DEVICE)
         message(WARNING "not building Project because TinyUSB submodule is not initialized in the SDK")
     endif ()
-endif ()
