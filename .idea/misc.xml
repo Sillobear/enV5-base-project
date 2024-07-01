@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+<<<<<<< HEAD
   <component name="Black">
     <option name="sdkName" value="enV5-nettest" />
   </component>
+=======
+>>>>>>> 9741d12d1ca038d1a59d912945168b1bca906e3e
   <component name="CMakePythonSetting">
     <option name="pythonIntegrationState" value="YES" />
   </component>
