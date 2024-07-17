@@ -43,7 +43,7 @@ void initHardware(void) {
     stdio_init_all();
     sleep_ms(500);
 
-    blinkLED(5);
+    blinkLED(2);
 }
 
 void loadBinFile(void) {
@@ -56,11 +56,13 @@ void loadBinFile(void) {
         }
         index++;
     }
-    blinkLED(2);
     uint32_t length = strtol(raw_length, NULL, 10);
+
+    printf("ack: length=%lu\n", length);
 
     for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_SECTOR); index++) {
         flashEraseSector(&flash_config, index *FLASH_BYTES_PER_SECTOR);
+        printf("ack: erase sector\n");
     }
 
     for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_PAGE); index++) {
@@ -75,9 +77,10 @@ void loadBinFile(void) {
             input_buffer[buffer_index] = getchar();
         }
         flashWritePage(&flash_config, index*FLASH_BYTES_PER_PAGE, input_buffer, FLASH_BYTES_PER_PAGE);
-        blinkLED(1);
+        //blinkLED(1);
+        //printf("ack: page\n");
     }
-    printf("ack: binfile");
+    printf("ack: binfile\n");
 }
 
 void runTest(void) {
@@ -130,6 +133,7 @@ void runTest(void) {
 
 void sendConfig(void) {
     printf("page: %i\n", FLASH_BYTES_PER_PAGE);
+    printf("sector: %i\n", FLASH_BYTES_PER_SECTOR);
 }
 
 _Noreturn void run(void) {
@@ -150,6 +154,9 @@ _Noreturn void run(void) {
             break;
         case 'c':
             sendConfig();
+            break;
+        case 'l':
+            blinkLED(5);
             break;
         default:
             break;
