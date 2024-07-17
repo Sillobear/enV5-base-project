@@ -63,7 +63,7 @@ def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: s
     for i, data in enumerate(binary):
         device.write(data)
         if i % percent == 0:
-            print(f"{(i/len_binary):3.0}%", end='\r')
+            print(f"\r{(i/len_binary):3.0%}", end='', flush=True)
     print("\n")
     print(f"bin_file_completed")
     acknowledge = device.readline()
