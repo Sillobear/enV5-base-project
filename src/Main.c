@@ -12,8 +12,10 @@
 #include "EnV5HwController.h"
 #include "stub.h"
 #include "Flash.h"
+#include "Spi.h"
+#include "Common.h"
 
-spiConfiguration_t spi_config = {
+spiConfiguration_t spi_config_flash = {
     .spiInstance = SPI_FLASH_INSTANCE,
     .baudrate = SPI_FLASH_BAUDRATE,
     .sckPin = SPI_FLASH_SCK,
@@ -25,7 +27,7 @@ spiConfiguration_t spi_config = {
 flashConfiguration_t flash_config = {
     .flashBytesPerPage = FLASH_BYTES_PER_PAGE,
     .flashBytesPerSector = FLASH_BYTES_PER_SECTOR,
-    .flashSpiConfiguration = &spi_config,
+    .flashSpiConfiguration = &spi_config_flash,
 };
 
 void blinkLED(size_t count) {
@@ -41,12 +43,71 @@ void blinkLED(size_t count) {
 void initHardware(void) {
     env5HwControllerInit();
     stdio_init_all();
+    spiInit(&spi_config_flash);
     sleep_ms(500);
 
     blinkLED(2);
 }
 
-void loadBinFile(void) {
+void eraseSectorsForBinFile(uint32_t length) {
+    size_t index;
+    for (index = 0; index < ceil((double)length / FLASH_BYTES_PER_SECTOR); index++) {
+        flashEraseSector(&flash_config, index * FLASH_BYTES_PER_SECTOR);
+
+    }
+}
+
+size_t getBufferLength(uint32_t length, size_t index){
+    if (length-index * FLASH_BYTES_PER_PAGE > 0) {
+        return FLASH_BYTES_PER_PAGE;
+    } else {
+        return length % FLASH_BYTES_PER_PAGE;
+    }
+}
+
+uint8_t *readUartBuffer(size_t buffer_length){
+
+    uint8_t *input_buffer = malloc(sizeof(int)*buffer_length);
+    for (size_t buffer_index = 0; buffer_index < buffer_length; buffer_index++) {
+        input_buffer[buffer_index] = getchar();
+    }
+    return input_buffer;
+}
+
+void getBinFile(uint32_t length){
+
+    size_t index;
+    for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_PAGE); index++) {
+        printf("ack: %zu \n", index);
+        size_t buffer_length = 0;
+        buffer_length = getBufferLength(length, index);
+        printf("ack: %zu", buffer_length);
+
+        printf("ack: start Read UART \n");
+        uint8_t *uart_buffer = readUartBuffer(buffer_length);
+        printf("ack: finish Read UART\n");
+
+        printf("ack: start Write flash\n");
+        flashWritePage(&flash_config, index*FLASH_BYTES_PER_PAGE, uart_buffer, buffer_length);
+        printf("ack: finish Write flash\n");
+
+        free(uart_buffer);
+
+        printf("ack: start Read Buffer\n");
+        uint8_t test_buffer[sizeof(uart_buffer)];
+        data_t readbuffer = {.data = test_buffer, .length=sizeof(uart_buffer)};
+        flashReadData(&flash_config, FLASH_BYTES_PER_PAGE, &readbuffer);
+        PRINT_BYTE_ARRAY("ack: data ", readbuffer.data, readbuffer.length);
+        printf("ack: finish Read Buffer\n");
+        //printf("read_from_flash:");
+        //blinkLED(1);
+        //printf("ack: page\n");
+    }
+    printf("ack: binfile\n");
+}
+
+
+void eraseAndLoadBinFile(void) {
     char raw_length [9];
     size_t index = 0;
     while (1) {
@@ -56,31 +117,16 @@ void loadBinFile(void) {
         }
         index++;
     }
+    printf("ack: read length\n");
     uint32_t length = strtol(raw_length, NULL, 10);
 
     printf("ack: length=%lu\n", length);
-
-    for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_SECTOR); index++) {
-        flashEraseSector(&flash_config, index *FLASH_BYTES_PER_SECTOR);
-        printf("ack: erase sector\n");
-    }
-
-    for (index = 0; index < ceil((double)length/FLASH_BYTES_PER_PAGE); index++) {
-        size_t buffer_length = 0;
-        if (length-index*FLASH_BYTES_PER_PAGE > 0) {
-            buffer_length = FLASH_BYTES_PER_PAGE;
-        } else {
-            buffer_length = length % FLASH_BYTES_PER_PAGE;
-        }
-        uint8_t input_buffer [buffer_length];
-        for (size_t buffer_index = 0; buffer_index < buffer_length; buffer_index++) {
-            input_buffer[buffer_index] = getchar();
-        }
-        flashWritePage(&flash_config, index*FLASH_BYTES_PER_PAGE, input_buffer, FLASH_BYTES_PER_PAGE);
-        //blinkLED(1);
-        //printf("ack: page\n");
-    }
-    printf("ack: binfile\n");
+    printf("ack: start eraseSectors\n");
+    eraseSectorsForBinFile(length);
+    printf("ack: finish eraseSectors\n");
+    printf("ack: start getBinFile\n");
+    getBinFile(length);
+    printf("ack: finish getBinFile\n");
 }
 
 void runTest(void) {
@@ -147,7 +193,8 @@ _Noreturn void run(void) {
             env5HwControllerFpgaPowersOff();
             break;
         case 'b':
-            loadBinFile();
+            printf("ack: start erase and load binfile\n");
+            eraseAndLoadBinFile();
             break;
         case 't':
             runTest();

@@ -1,8 +1,17 @@
 import math
 import time
-
+import threading
 import serial
 import pathlib
+import atexit
+
+
+def exit_handler(device: serial.Serial):
+    device.close()
+    print(f"closed {device.port=}")
+
+
+
 
 def read_config(device: serial.Serial) -> tuple[int, int]:
     #device.write('l'.encode())
@@ -30,7 +39,8 @@ def power_off_fpga(device: serial.Serial) -> None:
 
 def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: str, bin_file: str) -> None:
     device.write('b'.encode())
-
+    ack_start_erase_and_load_binfile = device.readline()
+    print(ack_start_erase_and_load_binfile)
     # Read file
     path_to_bin_file = pathlib.Path(f"./bin_files/{fpga}/{bin_file}")
     with open(path_to_bin_file, 'rb') as binfile:
@@ -38,13 +48,17 @@ def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: s
     size_of_binary = len(binary)
 
     # Write size of binary
+    print(f"Send: Write size of binary")
     size_of_binary = (str(size_of_binary)+"\n").encode()
-    print(f"{len(binary)=} in bytes: {size_of_binary}")
     device.write(size_of_binary)
+
+
 
     # Ack size of binary
     ack_size_of_binary = device.readline()
-    print(f"{ack_size_of_binary}")
+    print(ack_size_of_binary)
+    ack_size_of_binary = device.readline()
+    print(f"{ack_size_of_binary} == {size_of_binary}")
 
     num_sectors = math.ceil(len(binary)/sector_size) # Calculate sector_sizes_to_erase sizes of flash
 
@@ -52,18 +66,36 @@ def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: s
     for i in range(num_sectors):
         acknowledge = device.readline()
         print(f"{acknowledge}")
-    print(f"sending binfile")
-
 
 
     # Write pages
-    print("Send Binfile: ")
+    print("Send: Binfile")
+    acknowledge = device.readline()
+    print(f"{acknowledge}")
     len_binary = len(binary)
     percent = round(len_binary/100)
     for i, data in enumerate(binary):
         device.write(data)
         if i % percent == 0:
             print(f"\r{(i/len_binary):3.0%}", end='', flush=True)
+        if i % pagesize == pagesize-1:
+            print(f"{i=}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
+            acknowledge = device.readline()
+            print(f"{acknowledge}")
     print("\n")
     print(f"bin_file_completed")
     acknowledge = device.readline()
@@ -71,15 +103,19 @@ def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: s
 
 
 if __name__ == '__main__':
-    fpga = "S50" #"S15"
+    fpga = "S15"
+    #fpga = "S50"
 
-    elastic_node = serial.Serial(port="/dev/tty.usbmodem1101", baudrate=115200)
+
+    elastic_node = serial.Serial(port="/dev/tty.usbmodem101", baudrate=115200)
+
+    atexit.register(exit_handler, elastic_node)
     print(f"opened serial")
     pagesize, sector_size = read_config(elastic_node)
-    print(f"{pagesize=}")
-    print(f"{sector_size=}")
+    print(f"Send: {pagesize=}")
+    print(f"Send: {sector_size=}")
 
     send_bin_file(elastic_node, pagesize, sector_size, fpga, "blink_slow/led_test.bin")
     print(f"Power On FPGA")
     power_on_fpga(elastic_node)
-    elastic_node.close()
+
