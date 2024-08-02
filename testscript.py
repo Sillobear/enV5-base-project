@@ -36,6 +36,11 @@ def power_on_fpga(device: serial.Serial) -> None:
 def power_off_fpga(device: serial.Serial) -> None:
     device.write('f'.encode())
 
+def read_acknowledge_per_page(device: serial.Serial):
+    for i in range(9):
+        ack = device.readline()
+        print(ack)
+
 
 def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: str, bin_file: str) -> None:
     device.write('b'.encode())
@@ -80,22 +85,9 @@ def send_bin_file(device: serial.Serial, pagesize:int, sector_size: int, fpga: s
             print(f"\r{(i/len_binary):3.0%}", end='', flush=True)
         if i % pagesize == pagesize-1:
             print(f"{i=}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
-            acknowledge = device.readline()
-            print(f"{acknowledge}")
+            read_acknowledge_per_page(device)
+        elif i == len(binary)-1:
+            read_acknowledge_per_page(device)
     print("\n")
     print(f"bin_file_completed")
     acknowledge = device.readline()
